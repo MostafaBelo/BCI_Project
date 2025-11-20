@@ -2,6 +2,8 @@
 **/__pycache__/*
 
 EEGNet/*
+models/*
+**/*.pt
 **/*.fif
 **/*.stc
 **/*.npy
