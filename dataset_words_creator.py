@@ -5,7 +5,8 @@ from tqdm import tqdm
 import os
 
 # mat = loadmat("/mnt/C/BCI Dataset/Task1_Matlab/Matlab files/resultsZAB_SR.mat")
-mat = loadmat("/home/g4/Documents/BCI_Project/Dataset/Task1_Matlab/Matlab files/resultsZAB_SR.mat")
+mat = loadmat(
+    "/home/g4/Documents/BCI_Project/Dataset/Task1_Matlab/Matlab files/resultsZAB_SR.mat")
 
 # out_dir = "shards/words"
 out_dir = "/media/g4/EC52E06C52E03D48/BCI/shard/words"
@@ -18,12 +19,13 @@ shard_size = 50
 for shard_start in range(0, sentences_count, shard_size):
     shard_id = shard_start//shard_size
 
-    all_data = [None]*sentences_count
+    all_data = [None]*(min(shard_start+shard_size,
+                       sentences_count) - shard_start)
     for sentence_id in tqdm(range(shard_start, min(shard_start+shard_size, sentences_count))):
         words_count = mat["sentenceData"]["word"][0, sentence_id].shape[1]
         fixations_count = max([0 if f.shape[0] == 0 else f.max().item(
         ) for f in mat["sentenceData"]["word"][0, sentence_id]["fixPositions"][0]])
-        all_data[sentence_id] = {
+        all_data[sentence_id-shard_start] = {
             "eeg": [None]*fixations_count,
             "localized_eeg": [None]*fixations_count,
             "labels": [None]*fixations_count
@@ -41,13 +43,14 @@ for shard_start in range(0, sentences_count, shard_size):
 
                 fix_id = word_data["fixPositions"][0, i]
 
-                all_data[sentence_id]["eeg"][fix_id -
-                                             1] = word_data["rawEEG"][0, i]
+                all_data[sentence_id-shard_start]["eeg"][fix_id -
+                                                         1] = word_data["rawEEG"][0, i]
                 try:
-                    all_data[sentence_id]["localized_eeg"][fix_id -
-                                                           1] = localizer.localize(word_data["rawEEG"][0, i])
+                    all_data[sentence_id-shard_start]["localized_eeg"][fix_id -
+                                                                       1] = localizer.localize(word_data["rawEEG"][0, i])
                 except:
-                    all_data[sentence_id]["localized_eeg"][fix_id-1] = None
-                all_data[sentence_id]["labels"][fix_id -
-                                                1] = word_data["content"].item()
+                    all_data[sentence_id -
+                             shard_start]["localized_eeg"][fix_id-1] = None
+                all_data[sentence_id-shard_start]["labels"][fix_id -
+                                                            1] = word_data["content"].item()
     np.save(os.path.join(out_dir, f"shard_{shard_id}.npy"), all_data)
