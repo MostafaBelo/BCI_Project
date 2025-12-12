@@ -8,3 +8,4 @@ models/*
 **/*.stc
 **/*.npy
 **/*.npz
+.env

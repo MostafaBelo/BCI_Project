@@ -10,8 +10,33 @@ current_shard_idx = -1
 current_loaded_shard = None
 
 
+class FileManager:
+    def __init__(self):
+        self.state = "idle"
+
+    def get_shard(self, shard_idx, shard_path):
+        if (self.state == "pulling"):
+            while True:
+                if (self.state != "idle"):
+                    time.sleep(.1)
+
+        if current_shard_idx != shard_idx:
+            self._load_shard(shard_idx, shard_path)
+
+    def _load_shard(self, shard_idx, shard_path):
+        global current_loaded_shard, current_shard_idx
+        self.state = "pulling"
+        current_loaded_shard = np.load(
+            shard_path, allow_pickle=True)["arr_0"]
+        current_shard_idx = shard_idx
+        self.state = "idle"
+
+
+manager = FileManager()
+
+
 class EEGDataset(Dataset):
-    def __init__(self, data_dir, shard_size=50, pad_upto=10000, selective_indexing=None):
+    def __init__(self, data_dir, shard_size=100, pad_upto=10000, crp_rng=(0, 1), selective_indexing=None):
         """
         Args:
             data_dir (string): Path to the shards folder with .npy files with EEG data.
@@ -22,6 +47,7 @@ class EEGDataset(Dataset):
         self.shard_size = shard_size
 
         self.padding = pad_upto
+        self.crp_rng = crp_rng
 
         self.selective_indexing = selective_indexing
 
@@ -29,14 +55,25 @@ class EEGDataset(Dataset):
             raise FileNotFoundError(
                 "Labels file not found in the specified directory.")
         with open(os.path.join(data_dir, "labels.txt"), 'r') as f:
-            self.labels = [line.split(":", 1)
+            self.labels = [line.split(":", 2)
                            for line in f.read().strip().split("\n")]
-            self.labels = [(int(idx), sent) for idx, sent in self.labels]
+            self.labels = [(int(idx), sentiment, sentence)
+                           for idx, sentiment, sentence in self.labels]
+
+        self.subject_dirs = []
+        for file in os.listdir(data_dir):
+            if os.path.isdir(os.path.join(data_dir, file)):
+                self.subject_dirs.append(os.path.join(data_dir, file))
+
+        self.indexing = []
+        for subject_i in range(len(self.subject_dirs)):
+            for label_i in range(len(self.labels)):
+                self.indexing.append((subject_i, label_i))
 
     def __len__(self):
         if self.selective_indexing is not None:
             return len(self.selective_indexing)
-        return len(self.labels)
+        return len(self.indexing)
 
     def __getitem__(self, idx: int):
         global current_shard_idx, current_loaded_shard
@@ -48,33 +85,37 @@ class EEGDataset(Dataset):
         if self.selective_indexing is not None:
             idx = self.selective_indexing[idx]
 
-        idx, lbl = self.labels[idx]
+        subj_i, lbl_i = self.indexing[idx]
+        _, sent, lbl = self.labels[lbl_i]
 
-        shard_idx = idx // self.shard_size
+        shard_idx = lbl_i // self.shard_size
+        shard_path = os.path.join(
+            self.subject_dirs[subj_i], f"shard_{shard_idx}.npz")
+        shard_idx = subj_i*4 + shard_idx
         if shard_idx != current_shard_idx:
-            shard_path = os.path.join(
-                self.data_dir, f"localized_eeg_sentences_ZAB_shard{shard_idx}.npy")
-            current_loaded_shard = np.load(shard_path, allow_pickle=True)
-            current_shard_idx = shard_idx
+            manager.get_shard(shard_idx, shard_path)
 
-        data = current_loaded_shard[idx % self.shard_size]
+        data = current_loaded_shard[lbl_i % self.shard_size]
         if data is None:
-            return None, lbl
+            return None, sent, lbl
 
-        if data.shape[1] < self.padding:
-            pad_width = self.padding - data.shape[1]
-            if pad_width > 0:
-                data = np.concatenate(
-                    [data, np.zeros((data.shape[0], pad_width))], axis=1)
-            else:
-                data = data[:, :self.padding]
-        return torch.tensor(data), lbl
+        l = data.shape[1]
+        data = data[:, int(self.crp_rng[0]*l):int(self.crp_rng[1]*l)]
+        pad_width = self.padding - data.shape[1]
+        if pad_width > 0:
+            data = np.concatenate(
+                [data, np.zeros((data.shape[0], pad_width))], axis=1)
+        else:
+            data = data[:, :self.padding]
+        return torch.tensor(data), sent, lbl
 
     def _collate_fn(self, batch):
         data = [item[0] for item in batch if item[0] is not None]
         data = torch.stack(data, dim=0)
-        labels = [item[1] for item in batch if item[0] is not None]
-        return data, labels
+        sent = [int(item[1])+1 for item in batch if item[0] is not None]
+        sent = torch.tensor(sent)
+        labels = [item[2] for item in batch if item[0] is not None]
+        return data, sent, labels
 
     def split_train_valid_test(self, train_ratio=0.8, valid_ratio=0.1, shuffle=False):
         total_size = len(self)
@@ -201,7 +242,6 @@ class WordEEGDataset(Dataset):
         train_indices = indices[:train_size]
         valid_indices = indices[train_size:train_size + valid_size]
         test_indices = indices[train_size + valid_size:]
-        print(train_indices, valid_indices, test_indices)
 
         train_dataset = WordEEGDataset(
             self.data_dir, self.shard_size, selective_indexing=train_indices)

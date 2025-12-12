@@ -4,16 +4,17 @@ import numpy as np
 from tqdm import tqdm
 import os
 
-# mat = loadmat("/mnt/C/BCI Dataset/Task1_Matlab/Matlab files/resultsZAB_SR.mat")
-mat = loadmat(
-    "/home/g4/Documents/BCI_Project/Dataset/Task1_Matlab/Matlab files/resultsZAB_SR.mat")
+mat = loadmat("/mnt/C/BCI Dataset/Task1_Matlab/Matlab files/resultsZAB_SR.mat")
+# mat = loadmat(
+#     "/home/g4/Documents/BCI_Project/Dataset/Task1_Matlab/Matlab files/resultsZAB_SR.mat")
 
-# out_dir = "shards/words"
-out_dir = "/media/g4/EC52E06C52E03D48/BCI/shard/words"
+out_dir = "shards/words"
+# out_dir = "/media/g4/EC52E06C52E03D48/BCI/shard/words"
 
 os.makedirs(out_dir, exist_ok=True)
 
 sentences_count = mat["sentenceData"].shape[1]
+# sentences_count = 49
 
 shard_size = 50
 for shard_start in range(0, sentences_count, shard_size):
