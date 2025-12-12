@@ -110,12 +110,15 @@ class EEGDataset(Dataset):
         return torch.tensor(data), sent, lbl
 
     def _collate_fn(self, batch):
-        data = [item[0] for item in batch if item[0] is not None]
-        data = torch.stack(data, dim=0)
-        sent = [int(item[1])+1 for item in batch if item[0] is not None]
-        sent = torch.tensor(sent)
-        labels = [item[2] for item in batch if item[0] is not None]
-        return data, sent, labels
+        try:
+            data = [item[0] for item in batch if item[0] is not None]
+            data = torch.stack(data, dim=0)
+            sent = [int(item[1])+1 for item in batch if item[0] is not None]
+            sent = torch.tensor(sent)
+            labels = [item[2] for item in batch if item[0] is not None]
+            return data, sent, labels
+        except:
+            return None, None, None
 
     def split_train_valid_test(self, train_ratio=0.8, valid_ratio=0.1, shuffle=False):
         total_size = len(self)
@@ -133,11 +136,11 @@ class EEGDataset(Dataset):
         test_indices = indices[train_size + valid_size:]
 
         train_dataset = EEGDataset(
-            self.data_dir, self.shard_size, selective_indexing=train_indices)
+            self.data_dir, self.shard_size, self.padding, self.crp_rng, selective_indexing=train_indices)
         valid_dataset = EEGDataset(
-            self.data_dir, self.shard_size, selective_indexing=valid_indices)
+            self.data_dir, self.shard_size, self.padding, self.crp_rng, selective_indexing=valid_indices)
         test_dataset = EEGDataset(
-            self.data_dir, self.shard_size, selective_indexing=test_indices)
+            self.data_dir, self.shard_size, self.padding, self.crp_rng, selective_indexing=test_indices)
 
         return train_dataset, valid_dataset, test_dataset
 

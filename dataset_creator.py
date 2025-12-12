@@ -6,14 +6,14 @@ from tqdm import tqdm
 
 import os
 
-for file in tqdm(os.listdir("/mnt/C/BCI Dataset/Task1_Matlab/Matlab files/")):
+data_dir = "/home/g4/Documents/BCI_Project/Dataset/Task1_Matlab/Matlab files"
+for file in tqdm(os.listdir(data_dir)):
     subject_name = file.strip("results").strip("_SR.mat")
     if subject_name == "ZAB":
         continue
     print(subject_name)
 
-    mat = loadmat(
-        f"/mnt/C/BCI Dataset/Task1_Matlab/Matlab files/{file}")
+    mat = loadmat(os.path.join(data_dir, file))
     res = np.empty((1, 400), dtype=object)
 
     for i in tqdm(range(400)):
