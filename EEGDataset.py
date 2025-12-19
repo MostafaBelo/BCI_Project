@@ -36,7 +36,7 @@ manager = FileManager()
 
 
 class EEGDataset(Dataset):
-    def __init__(self, data_dir, shard_size=100, pad_upto=10000, crp_rng=(0, 1), selective_indexing=None):
+    def __init__(self, data_dir, ch_count=105, shard_size=100, pad_upto=10000, crp_rng=(0, 1), selective_indexing=None):
         """
         Args:
             data_dir (string): Path to the shards folder with .npy files with EEG data.
@@ -46,6 +46,8 @@ class EEGDataset(Dataset):
         self.data_dir = data_dir
         self.shard_size = shard_size
 
+        self.ch_count = ch_count
+
         self.padding = pad_upto
         self.crp_rng = crp_rng
 
@@ -54,21 +56,29 @@ class EEGDataset(Dataset):
         if not (os.path.exists(os.path.join(data_dir, "labels.txt"))):
             raise FileNotFoundError(
                 "Labels file not found in the specified directory.")
-        with open(os.path.join(data_dir, "labels.txt"), 'r') as f:
-            self.labels = [line.split(":", 2)
-                           for line in f.read().strip().split("\n")]
-            self.labels = [(int(idx), sentiment, sentence)
-                           for idx, sentiment, sentence in self.labels]
+        # with open(os.path.join(data_dir, "labels.txt"), 'r') as f:
+        #     self.labels = [line.split(":", 2)
+        #                    for line in f.read().strip().split("\n")]
+        #     self.labels = [(int(idx), sentiment, sentence)
+        #                    for idx, sentiment, sentence in self.labels]
 
-        self.subject_dirs = []
-        for file in os.listdir(data_dir):
-            if os.path.isdir(os.path.join(data_dir, file)):
-                self.subject_dirs.append(os.path.join(data_dir, file))
+        self.shards = []
+        for subdir, _, files in os.walk(data_dir):
+            for file in files:
+                if file.startswith("shard_") and file.endswith(".npz"):
+                    shard_idx = int(file.strip("shard_").strip(".npz"))
+                    self.shards.append((shard_idx, os.path.join(subdir, file)))
+        self.shards.sort()
+
+        # self.subject_dirs = []
+        # for file in os.listdir(data_dir):
+        #     if os.path.isdir(os.path.join(data_dir, file)):
+        #         self.subject_dirs.append(os.path.join(data_dir, file))
 
         self.indexing = []
-        for subject_i in range(len(self.subject_dirs)):
-            for label_i in range(len(self.labels)):
-                self.indexing.append((subject_i, label_i))
+        for shard_i in range(len(self.shards)):
+            for label_i in range(self.shard_size):
+                self.indexing.append((shard_i, label_i))
 
     def __len__(self):
         if self.selective_indexing is not None:
@@ -85,20 +95,19 @@ class EEGDataset(Dataset):
         if self.selective_indexing is not None:
             idx = self.selective_indexing[idx]
 
-        subj_i, lbl_i = self.indexing[idx]
-        _, sent, lbl = self.labels[lbl_i]
+        shard_idx, lbl_i = self.indexing[idx]
 
-        shard_idx = lbl_i // self.shard_size
-        shard_path = os.path.join(
-            self.subject_dirs[subj_i], f"shard_{shard_idx}.npz")
-        shard_idx = subj_i*4 + shard_idx
+        shard_path = self.shards[shard_idx][1]
         if shard_idx != current_shard_idx:
             manager.get_shard(shard_idx, shard_path)
 
-        data = current_loaded_shard[lbl_i % self.shard_size]
+        data, sent, lbl = current_loaded_shard[lbl_i]
         if data is None:
-            return None, sent, lbl
+            return None, None, None
 
+        c = data.shape[0]
+        if c != self.ch_count:
+            return None, None, None
         l = data.shape[1]
         data = data[:, int(self.crp_rng[0]*l):int(self.crp_rng[1]*l)]
         pad_width = self.padding - data.shape[1]
@@ -113,9 +122,12 @@ class EEGDataset(Dataset):
         try:
             data = [item[0] for item in batch if item[0] is not None]
             data = torch.stack(data, dim=0)
-            sent = [int(item[1])+1 for item in batch if item[0] is not None]
+            sent = [item[1] for item in batch if item[0] is not None]
             sent = torch.tensor(sent)
             labels = [item[2] for item in batch if item[0] is not None]
+
+            if data.shape[1] != self.ch_count:
+                raise Exception("Invalid chanel count")
             return data, sent, labels
         except:
             return None, None, None
@@ -136,11 +148,11 @@ class EEGDataset(Dataset):
         test_indices = indices[train_size + valid_size:]
 
         train_dataset = EEGDataset(
-            self.data_dir, self.shard_size, self.padding, self.crp_rng, selective_indexing=train_indices)
+            self.data_dir, self.ch_count, self.shard_size, self.padding, self.crp_rng, selective_indexing=train_indices)
         valid_dataset = EEGDataset(
-            self.data_dir, self.shard_size, self.padding, self.crp_rng, selective_indexing=valid_indices)
+            self.data_dir, self.ch_count, self.shard_size, self.padding, self.crp_rng, selective_indexing=valid_indices)
         test_dataset = EEGDataset(
-            self.data_dir, self.shard_size, self.padding, self.crp_rng, selective_indexing=test_indices)
+            self.data_dir, self.ch_count, self.shard_size, self.padding, self.crp_rng, selective_indexing=test_indices)
 
         return train_dataset, valid_dataset, test_dataset
 
