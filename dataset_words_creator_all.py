@@ -4,7 +4,8 @@ import numpy as np
 from tqdm import tqdm
 import os
 
-data_dir = "/mnt/C/BCI Dataset/Task1_Matlab/Matlab files"
+# data_dir = "/mnt/C/BCI Dataset/Task1_Matlab/Matlab files"
+data_dir = "/home/g4/Documents/BCI_Project/Dataset/Task1_Matlab/Matlab files"
 out_dir = "shards/words"
 os.makedirs(out_dir, exist_ok=True)
 

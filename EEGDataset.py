@@ -63,11 +63,10 @@ class EEGDataset(Dataset):
         #                    for idx, sentiment, sentence in self.labels]
 
         self.shards = []
-        for subdir, _, files in os.walk(data_dir):
-            for file in files:
-                if file.startswith("shard_") and file.endswith(".npz"):
-                    shard_idx = int(file.strip("shard_").strip(".npz"))
-                    self.shards.append((shard_idx, os.path.join(subdir, file)))
+        for file in os.listdir(data_dir):
+            if file.startswith("shard_") and file.endswith(".npz"):
+                shard_idx = int(file.strip("shard_").strip(".npz"))
+                self.shards.append((shard_idx, os.path.join(data_dir, file)))
         self.shards.sort()
 
         # self.subject_dirs = []
@@ -164,7 +163,7 @@ class EEGDataset(Dataset):
 
 
 class WordEEGDataset(Dataset):
-    def __init__(self, data_dir, ch_count=105, shard_size=50, pad_upto=10000, selective_indexing=None):
+    def __init__(self, data_dir, ch_count=105, shard_size=100, pad_upto=10000, selective_indexing=None):
         """
         Args:
             data_dir (string): Path to the shards folder with .npy files with EEG data.
@@ -242,10 +241,11 @@ class WordEEGDataset(Dataset):
             elif eeg_shape[1] > self.padding:
                 data["eeg"][i] = data["eeg"][i][:, :self.padding]
 
-        labels = [data["labels"][i] for i in range(
-            len(data["eeg"])) if (data["eeg"][i] is not None) and (data["eeg"][i].shape[0] == self.ch_count)]
-        data["eeg"] = np.stack(
-            [itm for itm in data["eeg"].tolist() if (itm is not None) and (itm.shape[0] == self.ch_count)], axis=0)
+        labels = [data["labels"][i] for i in range(len(data["eeg"])) if (data["eeg"][i] is not None) and (data["eeg"][i].shape[0] == self.ch_count)]
+        data["eeg"] = [itm for itm in data["eeg"].tolist() if (itm is not None) and (itm.shape[0] == self.ch_count)]
+        if len(data["eeg"]) == 0:
+            return None, None, None, None
+        data["eeg"] = np.stack(data["eeg"], axis=0)
         data["eeg"] = torch.tensor(data["eeg"])
         signal = data["eeg"]
         sentiment_lbl = data["sentiment"]
